@@ -1,6 +1,7 @@
 #define HAVE_REMOTE
 #include "pcap.h"
 
+#define LINE_LEN 16
 
 int main()
 {
@@ -84,18 +85,38 @@ int main()
 			continue;
 
 		/* 将时间戳转换成可识别的格式 */
-		/*local_tv_sec = header->ts.tv_sec;
+		local_tv_sec = header->ts.tv_sec;
 		ltime = localtime(&local_tv_sec);
 		strftime(timestr, sizeof timestr, "%H:%M:%S", ltime);
 
 		printf("%s,%.6d len:%d\n", timestr, header->ts.tv_usec, header->len);
-		*/
-		if (pcap_sendpacket(adhandle, pkt_data, header->caplen)!=0)
+		char temp[LINE_LEN + 1];
+		//输出包
+		for (i = 0; i < header->caplen; ++i)
+		{
+			printf("%.2x ", pkt_data[i]);
+			if (isgraph(pkt_data[i]) || pkt_data[i] == ' ')
+				temp[i % LINE_LEN] = pkt_data[i];
+			else
+				temp[i % LINE_LEN] = '.';
+
+			if (i % LINE_LEN == 15)
+			{
+				temp[16] = '\0';
+				printf("        ");
+				printf("%s", temp);
+				printf("\n");
+				memset(temp, 0, LINE_LEN);
+			}
+		}
+		printf("\n");
+		/*if (pcap_sendpacket(adhandle, pkt_data, header->caplen)!=0)
 		{
 			fprintf(stderr, "\nError sending the packet: \n", pcap_geterr(adhandle));
 			return -1;
-		}
+		}*/
 		//printf("Forward packets successfully!.\n");
+		break;
 	}
 
 	if (res == -1){
