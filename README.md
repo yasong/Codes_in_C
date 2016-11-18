@@ -1,2 +1,2 @@
-# code_C-
-some codes in c++
+# code_C
+some codes in c
