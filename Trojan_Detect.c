@@ -17,15 +17,15 @@ typedef struct ether_header{
 	u_short ehter_type;			//ethernet type
 }ether_header;
 
-//typedef struct ip_address{
-//	u_char byte1;
-//	u_char byte2;
-//	u_char byte3;
-//	u_char byte4;
-//}ip_address;
 typedef struct ip_address{
-	u_char addr[4];
+	u_char byte1;
+	u_char byte2;
+	u_char byte3;
+	u_char byte4;
 }ip_address;
+//typedef struct ip_address{
+//	u_char addr[4];
+//}ip_address;
 
 //ipv4
 typedef struct ip_header{
@@ -107,10 +107,10 @@ void hexdump(const u_char *pkt_content,u_int length)// , u_char length)
 	const u_char *data = (u_char *)pkt_content;
 	//u_char length = strlen(data);
 	u_char text[17] = "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
-	u_char i = 0;
+	u_int i = 0;
 	u_char j;
 	for (i = 0; i < length; i++) {
-		if (i % 16 == 0) printf("%08X  ", i);
+		if (i % 16 == 0) printf("%08d  ", i / 16);
 		printf("%02X ", data[i]);
 		text[i % 16] = (data[i] >= 0x20 && data[i] <= 0x7E) ? data[i] : '.';
 		if ((i+1) % 8 == 0 || i+1 == length) printf(" ");
@@ -125,10 +125,12 @@ void hexdump(const u_char *pkt_content,u_int length)// , u_char length)
 }
 void packet_handle_tcp(u_char *arg,
 						const struct pcap_pkthdr *pkt_header,
-						const u_char *pkt_content,u_int header_length)
+						const u_char *pkt_content, u_int header_length,u_int caplen)
 {
 	tcp_header *tcp_protocol;
-	tcp_protocol = (tcp_header *)(pkt_content + 14 + 20);
+	u_int hlen;
+	tcp_protocol = (tcp_header *)(pkt_content + 14 + header_length);
+	hlen = tcp_protocol->offset * 4;
 	printf("++++++++++++++++++++++TCP Protocol+++++++++++++++++++++++\n");
 
 	printf("Source Port: %i\n", ntohs(tcp_protocol->src_port));
@@ -147,8 +149,9 @@ void packet_handle_tcp(u_char *arg,
 	printf("Windows Size: %i\n", ntohs(tcp_protocol->windows_size));
 	printf("Checksum: 0x%.4\n", ntohs(tcp_protocol->checksum));
 	printf("Urgent Pointer: %i\n", ntohs(tcp_protocol->urgent_pointer));
-	u_char *content = (u_char *)(pkt_content + 14 + 20 + 20);
-	hexdump(content,header_length);
+	u_char *content = (u_char *)(pkt_content + 14 + header_length + hlen);
+	caplen = caplen - 14 - header_length - hlen;
+	hexdump(content,caplen);
 	contest_handle();
 
 
@@ -156,22 +159,29 @@ void packet_handle_tcp(u_char *arg,
 //udp
 void packet_handle_udp(u_char *arg,
 	const struct pcap_pkthdr *pkt_header,
-	const u_char *pkt_content)
+	const u_char *pkt_content,
+	u_int header_length,
+	u_int caplen)
 {
 	udp_header *udp_protocol;
 	u_short dst_port;
 	u_short src_port;
 	u_short len;
-
-	udp_protocol = (udp_header *)(pkt_content + 14 + 20);
+	printf("++++++++++++++++++++++UDPProtocol+++++++++++++++++++++++\n");
+	udp_protocol = (udp_header *)(pkt_content + 14 + header_length);
 	dst_port = ntohs(udp_protocol->dst_port);
 	src_port = ntohs(udp_protocol->src_port);
 	len = ntohs(udp_protocol->length);
+
+	u_char *content = (u_char *)(pkt_content + 14 + header_length + 20);
+	caplen = caplen - 14 - header_length - 20;
+	hexdump(content, caplen);
 }
 //icmp
 void packet_handle_icmp(u_char *arg,
 	const struct pcap_pkthdr *pkt_header,
-	const u_char *pkt_content)
+	const u_char *pkt_content,
+	u_int header_length,u_int caplen)
 {
 	icmp_header *icmp_protocol;
 	u_short type;
@@ -180,14 +190,17 @@ void packet_handle_icmp(u_char *arg,
 	u_int tra_time;
 	u_int rec_time;
 
-	icmp_protocol = (icmp_header *)(pkt_content + 14 + 20);
-	printf("++++++++++++++++++++++TCP Protocol+++++++++++++++++++++++\n");
+	icmp_protocol = (icmp_header *)(pkt_content + 14 + header_length);
+	printf("++++++++++++++++++++++ICMP Protocol+++++++++++++++++++++++\n");
 	len = sizeof(icmp_protocol);
 	type = icmp_protocol->type;
 	ori_time = icmp_protocol->ori_time;
 	rec_time = icmp_protocol->rec_time;
 	tra_time = icmp_protocol->tra_time;
 
+	u_char *content = (u_char *)(pkt_content + 14 + header_length + 20);
+	caplen = caplen - 14 - 20 - header_length;
+	hexdump(content, caplen);
 }
 //arp
 void packet_handle_arp(u_char *arg,
@@ -237,7 +250,7 @@ void packet_handle_arp(u_char *arg,
 //ip
 void packet_handle_ip(u_char *arg,
 	const struct pcap_pkthdr *pkt_header,
-	const u_char *pkt_content)
+	const u_char *pkt_content,u_int caplen)
 {
 	ip_header *ip_protocol;
 	u_int header_length;
@@ -269,19 +282,31 @@ void packet_handle_ip(u_char *arg,
 	tlen = ip_protocol->tlen;
 	offset = ip_protocol->offset;
 
+	printf("Total Length:%d\n", tlen);
+	printf("Source Address -> Destination Address.\n");
+	printf("%d.%d.%d.%d -> %d.%d.%d.%d\n",
+		src.byte1,
+		src.byte2,
+		src.byte3,
+		src.byte4,
+		dst.byte1,
+		dst.byte2,
+		dst.byte3,
+		dst.byte4);
 	//printf("%d%d%c%d%d%d", src, dst, ttl, identification, tlen, offset);
 	switch (ip_protocol->proto)
 	{
 		case 6:
-			packet_handle_tcp(arg, pkt_header, pkt_content,tlen);
+			packet_handle_tcp(arg, pkt_header, pkt_content,header_length,caplen);
 			break;
 		case 17:
-			packet_handle_udp(arg, pkt_header, pkt_content);
+			packet_handle_udp(arg, pkt_header, pkt_content, header_length,caplen);
 			break;
 		case 1:
-			packet_handle_icmp(arg, pkt_header, pkt_content);
+			packet_handle_icmp(arg, pkt_header, pkt_content, header_length,caplen);
 			break;
 		default:
+			printf("Other Protocol in transfer layer!\n");
 			break;
 	}
 
@@ -290,7 +315,7 @@ void packet_handle_ip(u_char *arg,
 //Ethernet
 void packet_handle_eht(u_char *arg,
 	const struct pcap_pkthdr *pkt_header,
-	const u_char *pkt_content)
+	const u_char *pkt_content,u_int caplen)
 {
 	ether_header *ethernet_protocol;
 	u_short ethernet_type;
@@ -313,7 +338,7 @@ void packet_handle_eht(u_char *arg,
 		*(mac + 5));
 	mac = ethernet_protocol->ether_dst;
 
-	printf("Source Mac Address: %02x:%02x:%02x:%02x:%02x:%02x\n",
+	printf("Destination Mac Address: %02x:%02x:%02x:%02x:%02x:%02x\n",
 		*mac,
 		*(mac + 1),
 		*(mac + 1),
@@ -325,22 +350,22 @@ void packet_handle_eht(u_char *arg,
 	switch (ethernet_type)
 	{
 	case 0x0800:
-		printf("%s", "IP");
+		printf("%s\n", "IP");
 		break;
 	case 0x0806:
-		printf("%s", "ARP");
+		printf("%s\n", "ARP");
 		break;
 	case 0x0835:
-		printf("%s", "RARP");
+		printf("%s\n", "RARP");
 		break;
 	default:
-		printf("%s", "Unknown Protocol!");
+		printf("%s\n", "Unknown Protocol!");
 		break;
 	}
 	switch (ethernet_type)
 	{
 	case 0x0800:
-		packet_handle_ip(arg, pkt_header, pkt_content);
+		packet_handle_ip(arg, pkt_header, pkt_content,caplen);
 		break;
 	case 0x0806:
 		packet_handle_arp(arg, pkt_header, pkt_content);
@@ -444,7 +469,7 @@ int main()
 
 		printf("%s,%.6d len:%d\n", timestr, header->ts.tv_usec, header->len);
 		//hexdump(pkt_data,header->len);
-		packet_handle_eht(NULL, header, pkt_data);
+		packet_handle_eht(NULL, header, pkt_data,header->caplen);
 		//char temp[LINE_LEN + 1];
 		//Êä³ö°ü
 		/*for (j = 0; j < header->caplen; ++j)
